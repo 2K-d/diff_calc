@@ -3,15 +3,29 @@ name: CI Pipeline
 on: push
 
 jobs:
-  build:
+  build-linux:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
-      - run: rustup update stable && rustup default stable
-      - run: sudo apt-get update && sudo apt-get install -y build-essential clang llvm-dev
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
       - run: cargo build --release
       - uses: softprops/action-gh-release@v3
         if: github.ref_type == 'tag'
         with:
           files: target/release/diff_calc
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - run: cargo build --release
+      - uses: softprops/action-gh-release@v3
+        if: github.ref_type == 'tag'
+        with:
+          files: target/release/diff_calc.exe

@@ -5,7 +5,7 @@ Compute Etterna difficulty on Quaver map
 diff_calc [OPTIONS] <INPUT>
 ```
 ### Arguments:
-  <INPUT>  path to a *.qua file that contains a map to compute
+  \<INPUT\>  path to a *.qua file that contains a map to compute
 
 ### Options:
   -r, --rate <RATE>  speed modifier used for difficulty calculation [default: 1]  

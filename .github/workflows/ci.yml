@@ -1,16 +1,17 @@
 name: CI Pipeline
 
-on:
-  push:
-    branches:
-      - master
+on: push
 
 jobs:
   build:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: rustup update stable && rustup default stable
       - run: sudo apt-get update && sudo apt-get install -y build-essential clang llvm-dev
       - run: cargo build --release
+      - uses: softprops/action-gh-release@v3
+        if: github.ref_type == 'tag'
+        with:
+          files: target/release/diff_calc

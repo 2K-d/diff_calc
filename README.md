@@ -1,12 +1,13 @@
 # Diff-Calc
-This is a CLI program to compute Etterna diff on Quaver map.
+Compute Etterna difficulty on Quaver map
 ## Usage
 ```shell
-diff_calc --input <*.qua> [--rate <rate>]
+diff_calc [OPTIONS] <INPUT>
 ```
-- -i, --input FILE  
-Define the FILE, a quaver map, to compute diff on.
-- -r, --rate NUM  
-Define rate NUM that the diff should represent, default is 1.0.
-## License
-MIT
+### Arguments:
+  <INPUT>  path to a *.qua file that contains a map to compute
+
+### Options:
+  -r, --rate <RATE>  speed modifier used for difficulty calculation [default: 1]  
+  -h, --help         Print help  
+  -V, --version      Print version  

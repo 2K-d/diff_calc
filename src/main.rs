@@ -6,13 +6,12 @@ use minacalc_rs::{Calc, CalcMode, Note};
 
 // CLI MODEL
 #[derive(Parser)]
-#[command(name = "Diff-Calc")]
-#[command(about = "Compute Etterna difficulty on Quaver map", long_about = None)]
+#[command(name = "Diff-Calc", version = clap::crate_version!(), about = "Compute Etterna difficulty on Quaver map", long_about = None)]
 struct Args {
-    #[arg(short, long)]
+    #[arg(help = "path to a *.qua file that contains a map to compute")]
     input: String,
-    #[arg(short, long, default_value_t = 1.0)]
-    rate: f32,
+    #[arg(short, long, default_value_t = 1.0, help = "speed modifier used for difficulty calculation")]
+    rate: f32
 }
 
 // QUAVER MODEL
@@ -24,7 +23,10 @@ struct HitObject {
 
 #[derive(Deserialize)]
 struct Map {
-    HitObjects: Vec<HitObject>
+    Title: String,
+    Artist: String,
+    DifficultyName: String,
+    HitObjects: Vec<HitObject>,
 }
 
 // DO
@@ -51,8 +53,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .calc_all_rates(&result, 4, CalcMode::Msd)
         .unwrap();
 
+    // Print result
     let score = scores.rates[((args.rate - 0.7) / 0.1) as usize];
-    println!("{:.1}x →", args.rate);
+    println!("{} - {} - {} - {:.1}x →", map.Artist, map.Title, map.DifficultyName, args.rate);
     println!("overall: {:.2}", score.overall);
     println!("stream: {:.2}", score.stream);
     println!("jumpstream: {:.2}", score.jumpstream);

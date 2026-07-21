@@ -1,6 +1,9 @@
 name: CI Pipeline
 
-on: push
+on: 
+  push:
+    tags:
+      - '*'
 
 jobs:
   build-linux:
@@ -15,7 +18,6 @@ jobs:
           toolchain: stable
       - run: cargo build --release
       - uses: softprops/action-gh-release@v3
-        if: github.ref_type == 'tag'
         with:
           files: target/release/diff_calc
 
@@ -31,6 +33,5 @@ jobs:
           toolchain: stable
       - run: cargo build --release
       - uses: softprops/action-gh-release@v3
-        if: github.ref_type == 'tag'
         with:
           files: target/release/diff_calc.exe

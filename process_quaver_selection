@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Check if file path is provided
+if [ $# -eq 0 ]; then
+    echo "Usage: $0 <quaver_path> <qua_processor>"
+    exit 1
+fi
+
+FILE_PATH="$1/Data/Temp/Now Playing/map.txt"
+
+# Get initial modification time
+if [ ! -f "$FILE_PATH" ]; then
+    LAST_MOD_TIME=""
+else
+    LAST_MOD_TIME=$(stat -c %Y "$FILE_PATH")
+fi
+
+while true; do
+    # Wait for file change (check every second)
+    sleep 1
+
+    # Get current modification time
+    if [ ! -f "$FILE_PATH" ]; then
+        CURRENT_MOD_TIME=""
+    else
+        CURRENT_MOD_TIME=$(stat -c %Y "$FILE_PATH")
+    fi
+
+    # Check if file was modified
+    if [ "$CURRENT_MOD_TIME" != "$LAST_MOD_TIME" ] && [ -f "$FILE_PATH" ]; then
+
+        # Read file content
+        CONTENT=$(cat "$FILE_PATH")
+
+        # Process the content
+        if [[ "$CONTENT" =~ ^(.*)[[:space:]]-[[:space:]](.*)[[:space:]]\[(.*)\][[:space:]]$ ]]; then
+            clear
+            X="${BASH_REMATCH[1]}"
+            Y="${BASH_REMATCH[2]}"
+            Z="${BASH_REMATCH[3]}"
+            MATCHED="$(grep -IPRlz "(?s)Title: $Y.*Artist: $X.*DifficultyName: $Z" "$1" | head -n 1)"
+            $2 "$MATCHED"
+        fi
+
+        # Update last modification time
+        LAST_MOD_TIME=$CURRENT_MOD_TIME
+
+    fi
+done

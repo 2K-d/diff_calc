@@ -34,11 +34,14 @@ struct Map {
     HitObjects: Vec<HitObject>,
 }
 
+// compute etterna diff
 fn compute_difficulty(qua_path: PathBuf, rate: f32) {
-    // Transform quaver to etterna format
-    let mut sums: HashMap<u32, u32> = HashMap::new();
     let yaml_text = fs::read_to_string(qua_path).unwrap();
     let map: Map = serde_yaml::from_str(&yaml_text).unwrap();
+
+    // Transform quaver to etterna format
+    let mut sums: HashMap<u32, u32> = HashMap::new();
+    
     for it in &map.HitObjects {
         *sums.entry(it.StartTime).or_insert(0) += u32::pow (2, it.Lane - 1);
     }
@@ -71,15 +74,30 @@ fn compute_difficulty(qua_path: PathBuf, rate: f32) {
     println!("technical: {:.2}", score.technical);
 }
 
+// Find Qua file from mapid
 fn find_qua_file(songs_path: &PathBuf, map_id: &str) -> Option<PathBuf> {
-    let file_searched = String::from(map_id) + ".qua";
-    for entry in WalkDir::new(songs_path).into_iter().filter_map(|e| e.ok()) {
-        if !entry.file_type().is_file() || !entry.file_name().to_str()?.eq(&file_searched) {
-            continue;
-        }
-        return Some(entry.path().to_path_buf());
-    }
-    return None;
+    let file_searched = format!("{map_id}.qua");
+    return WalkDir::new(songs_path)
+        .into_iter()
+        .filter_map(Result::ok)
+        .find_map(|entry| {
+            if entry.file_type().is_file()
+                && entry.file_name().to_str() == Some(&file_searched)
+            {
+                Some(entry.into_path())
+            } else {
+                None
+            }
+        });
+}
+
+fn parse_rate_from_mods(mods: &str) -> f32 {
+    // Take the prefix before the first 'x' should be the rate
+    let (rate_part, _) = mods
+        .split_once('x')
+        .unwrap_or(("1.0", ""));
+
+    return rate_part.trim().parse::<f32>().unwrap_or(1.0);
 }
 
 // DO
@@ -112,11 +130,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if events.iter().any(|event| { return event.path.eq(&mapid_path) || event.path.eq(&mods_path) }) {
                     let mapid = fs::read_to_string(&mapid_path)?;
                     let mods = fs::read_to_string(&mods_path)?;
-                    let mut rate: f32 = 1.0;
-                    if mods.contains("x") {
-                        let (rate_part, _) = mods.split_once('x').expect("expected 'x' character in mods");
-                        rate = rate_part.trim().parse::<f32>().unwrap();
-                    }
+                    let rate = parse_rate_from_mods(&mods);
                     let qua = find_qua_file(&songs_path, mapid.trim());
                     if qua.is_some() {
                         compute_difficulty(qua.unwrap(), rate);

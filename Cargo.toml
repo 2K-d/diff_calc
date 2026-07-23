@@ -8,3 +8,7 @@ serde = { version = "1.0", features = ["derive"] }
 serde_yaml = "0.9"
 minacalc-rs = "515.1"
 clap = { version = "4.6", features = ["derive", "cargo"] }
+notify = "8.2"
+notify-debouncer-mini = "0.7.0"
+walkdir = "2.5.0"
+crossterm = "0.29.0"

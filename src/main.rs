@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, fs, io::stdout, path::{Path, PathBuf}, time::Duration};
+use std::{collections::HashMap, env, fs, io::stdout, path::PathBuf, time::Duration};
 use serde::Deserialize;
 use minacalc_rs::{Calc, CalcMode, Note, SkillsetScores};
 use notify::{RecursiveMode};
@@ -100,15 +100,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     
     // Get input
     #[cfg(target_os = "windows")]
-    let quaver_installation_default = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Quaver";
+    let quaver_installation_default = PathBuf::from("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Quaver");
+
     #[cfg(target_os = "linux")]
-    let quaver_installation_default = "~/.steam/steamapps/common";
+    let quaver_installation_default = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or(PathBuf::from("."))
+        .join(".local").join("share").join("Steam").join("steamapps").join("common").join("Quaver");
+
     #[cfg(target_os = "macos")]
-    let quaver_installation_default = "~/Library/Application Support/Steam/steamapps/common";
+    let quaver_installation_default = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or(PathBuf::from("."))
+        .join("Library").join("Application Support").join("Steam").join("steamapps").join("common").join("Quaver");
 
     let mut args = env::args().skip(1);
-    let quaver_installation = args.next().unwrap_or(String::from(quaver_installation_default));
-    let quaver_installation_path = Path::new(&quaver_installation);
+    let quaver_installation_path = args.next().map(PathBuf::from).unwrap_or(quaver_installation_default);
     
     if !quaver_installation_path.exists() {
         eprintln!("Quaver installation could not be found, please give a correct path as argument of this program.");

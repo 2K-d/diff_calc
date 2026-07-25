@@ -25,15 +25,17 @@ struct Map {
     Artist: String,
     DifficultyName: String,
     HitObjects: Vec<HitObject>,
+    Mode: String
 }
 
-fn compute_etterna_difficulty(calc: &Calc, map: &Map, rate: f32) -> (f32, SkillsetScores) {
+fn compute_etterna_difficulty(calc: &Calc, hit_objects: &Vec<HitObject>, n_key: u32, rate: f32) -> (f32, SkillsetScores) {
     // Transform quaver to etterna format
     let mut sums: HashMap<u32, u32> = HashMap::new();
     
-    for it in &map.HitObjects {
+    for it in hit_objects {
         *sums.entry(it.StartTime.unwrap_or(0)).or_insert(0) += u32::pow (2, it.Lane - 1);
     }
+
     let mut result: Vec<Note> = sums
         .into_iter()
         .map(|(start_time, lane)| Note { row_time: start_time as f32 / 1000.0, notes: lane })
@@ -42,8 +44,8 @@ fn compute_etterna_difficulty(calc: &Calc, map: &Map, rate: f32) -> (f32, Skills
 
     // Do difficulty calculation
     let scores = calc
-        .calc_all_rates(&result, 4, CalcMode::Msd)
-        .unwrap();
+        .calc_all_rates(&result, n_key, CalcMode::Msd)
+        .expect("calculation of difficulty should work");
     
     // Print result
     let rate_idx = ((rate - 0.7) / 0.1).round() as usize;
@@ -144,7 +146,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         
                     let mut rate = 1.0;
                     let mut qua = None;
-                    let mut map = None;
+                    let mut map: Option<Map> = None;
                     match fs::read_to_string(&mods_path) {
                         Ok(mods) => {
                             rate = parse_rate_from_mods(&mods);
@@ -177,6 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                                 Err(e) => {
                                     eprintln!("Could not parse currently playing map {e}");
+                                    continue;
                                 }
                             }
                         }
@@ -187,7 +190,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
 
                     let m = map.unwrap();
-                    let (rate, score) = compute_etterna_difficulty(&calc, &m, rate);
+
+                    // Find keys of map
+                    let n_key : u32 = m.Mode
+                        .strip_prefix("Keys")
+                        .and_then(|key| key.parse().ok())
+                        .expect("missing 'Keys' prefix or could not parse number");
+
+                    if n_key.lt(&2) {
+                        eprintln!("Cannot do difficulty calculation on less than 2K");
+                        continue;
+                    }
+
+                    let (rate, score) = compute_etterna_difficulty(&calc, &m.HitObjects, n_key, rate);
                     print_score(&m, rate, &score);
                 }
             },

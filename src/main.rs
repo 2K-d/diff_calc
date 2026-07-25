@@ -33,7 +33,7 @@ fn compute_etterna_difficulty(calc: &Calc, hit_objects: &Vec<HitObject>, n_key: 
     let mut sums: HashMap<u32, u32> = HashMap::new();
     
     for it in hit_objects {
-        *sums.entry(it.StartTime.unwrap_or(0)).or_insert(0) += u32::pow (2, it.Lane - 1);
+        *sums.entry(it.StartTime.unwrap_or(0)).or_insert(0) += 1 << (it.Lane - 1);
     }
 
     let mut result: Vec<Note> = sums
@@ -61,24 +61,16 @@ fn find_qua_file(songs_path: &PathBuf, map_id: &str) -> Option<PathBuf> {
     return WalkDir::new(songs_path)
         .into_iter()
         .filter_map(Result::ok)
-        .find_map(|entry| {
-            if entry.file_type().is_file()
-                && entry.file_name().to_str() == Some(&file_searched)
-            {
-                Some(entry.into_path())
-            } else {
-                None
-            }
-        });
+        .find(|entry| entry.file_type().is_file() && entry.file_name().to_str() == Some(&file_searched))
+        .map(|entry| entry.into_path());
 }
 
 fn parse_rate_from_mods(mods: &str) -> f32 {
     // Take the prefix before the first 'x' should be the rate
-    let (rate_part, _) = mods
-        .split_once('x')
-        .unwrap_or(("1.0", ""));
-
-    return rate_part.trim().parse::<f32>().unwrap_or(1.0);
+    return mods.split_once('x')
+        .map(|(rate_part, _)| rate_part.trim())
+        .and_then(|s| s.parse::<f32>().ok())
+        .unwrap_or(1.0);
 }
 
 fn print_score(map: &Map, rate: f32, score: &SkillsetScores) {
@@ -137,8 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_timeout(Duration::from_millis(1000))
         .with_notify_config(backend_config);
 
-    let mut debouncer = new_debouncer_opt::<_, notify::PollWatcher>(debouncer_config, tx).unwrap();
-
+    let mut debouncer = new_debouncer_opt::<_, notify::PollWatcher>(debouncer_config, tx)?;
     debouncer.watcher().watch(&now_playing_path, RecursiveMode::NonRecursive)?;
 
     // On file update
@@ -146,57 +137,38 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match res {
             Ok(events) => {
                 // Treat update on currently playing map
-                if events.iter().any(|event| { return event.path.eq(&mapid_path) || event.path.eq(&mods_path) }) {
+                if events.iter().any(|event| event.path.eq(&mapid_path) || event.path.eq(&mods_path)) {
                     // Clear term
                     let _ = execute!(stdout(), Clear(ClearType::All));
                     let _ = execute!(stdout(), MoveTo(0, 0));
                         
-                    let mut rate = 1.0;
-                    let mut qua = None;
-                    let mut map: Option<Map> = None;
-                    match fs::read_to_string(&mods_path) {
-                        Ok(mods) => {
-                            rate = parse_rate_from_mods(&mods);
-                        }
-                        Err(e) => {
-                            eprintln!("mods read error: {e}");
-                            continue;
-                        }
-                    }
-                    match fs::read_to_string(&mapid_path) {
-                        Ok(mapid) => {
-                            qua = find_qua_file(&songs_path, mapid.trim());
-                            if qua.is_none() {
-                                eprintln!("Could not find currently playing map");
-                                continue;
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("mapid read error: {e}");
-                            continue;
-                        }
+                    let rate = fs::read_to_string(&mods_path)
+                        .map_err(|e| eprintln!("mods read error: {e}"))
+                        .and_then(|mods| Ok(parse_rate_from_mods(&mods)))
+                        .unwrap_or(1.0);
+
+                    let mapid = fs::read_to_string(&mapid_path)
+                        .map_err(|e| eprintln!("mapid read error: {e}"))
+                        .and_then(|id| Ok(id.trim().to_owned()))
+                        .ok();
+
+                    let qua = mapid.as_ref().and_then(|id| find_qua_file(&songs_path, id));
+
+                    if qua.is_none() {
+                        eprintln!("Could not find currently playing map");
+                        continue;
                     }
 
                     // Open Quaver file and parse it
-                    match fs::read_to_string(qua.unwrap()) {
-                        Ok(yaml_text) => {
-                            match serde_yaml::from_str(&yaml_text) {
-                                Ok(parsed_map) => {
-                                    map = Some(parsed_map);
-                                }
-                                Err(e) => {
-                                    eprintln!("Could not parse currently playing map {e}");
-                                    continue;
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            eprintln!("qua read error: {e}");
-                            continue;
-                        }
-                    }
+                    let parsed_map = fs::read_to_string(&qua.unwrap())
+                        .map_err(|e| eprintln!("qua read error: {e}"))
+                        .and_then(|yaml_text| serde_yaml::from_str::<Map>(&yaml_text).map_err(|e| eprintln!("Could not parse map: {e}")))
+                        .ok();
 
-                    let m = map.unwrap();
+                    let m = match parsed_map {
+                        Some(m) => m,
+                        None => continue,
+                    };
 
                     // Find keys of map
                     let n_key : u32 = m.Mode

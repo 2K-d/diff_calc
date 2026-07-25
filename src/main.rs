@@ -77,14 +77,14 @@ fn parse_rate_from_mods(mods: &str) -> f32 {
 fn print_score(map: &Map, rate: f32, score: &SkillsetScores) {
     // Print info rate and score
     println!("{} - {} - {} - {:.1}x →", map.Artist, map.Title, map.DifficultyName, rate);
-    println!("overall:\t{:.2}", score.overall);
-    println!("stream:\t\t{:.2}", score.stream);
-    println!("jumpstream:\t{:.2}", score.jumpstream);
-    println!("handstream:\t{:.2}", score.handstream);
-    println!("stamina:\t{:.2}", score.stamina);
-    println!("jackspeed:\t{:.2}", score.jackspeed);
-    println!("chordjack:\t{:.2}", score.chordjack);
-    println!("technical:\t{:.2}", score.technical);
+    println!("Overall:\t{:.2}", score.overall);
+    println!("Stream:\t\t{:.2}", score.stream);
+    println!("Jumpstream:\t{:.2}", score.jumpstream);
+    println!("Handstream:\t{:.2}", score.handstream);
+    println!("Stamina:\t{:.2}", score.stamina);
+    println!("Jackspeed:\t{:.2}", score.jackspeed);
+    println!("Chordjack:\t{:.2}", score.chordjack);
+    println!("Technical:\t{:.2}", score.technical);
 }
 
 fn get_quaver_installation_path() -> PathBuf {

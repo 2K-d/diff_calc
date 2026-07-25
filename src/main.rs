@@ -1,5 +1,4 @@
-use std::{io::{stdout}, collections::HashMap, fs, path::{Path, PathBuf}, time::Duration};
-use clap::Parser;
+use std::{collections::HashMap, env, fs, io::stdout, path::{Path, PathBuf}, time::Duration};
 use serde::Deserialize;
 use minacalc_rs::{Calc, CalcMode, Note, SkillsetScores};
 use notify::{RecursiveMode};
@@ -10,14 +9,6 @@ use crossterm::{
     terminal::{Clear, ClearType},
     cursor::MoveTo
 };
-
-// CLI MODEL
-#[derive(Parser)]
-#[command(name = "Diff-Calc", version = clap::crate_version!(), about = "Compute Etterna difficulty on Quaver map", long_about = None)]
-struct Args {
-    #[arg(help = "path to a quaver installation", default_value = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Quaver")]
-    quaver_installation: String
-}
 
 // QUAVER MODEL
 #[allow(non_snake_case)]
@@ -106,13 +97,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let calc = Calc::new().expect("Etterna Calc should launch");
     
     // Get input
-    let args = Args::parse();
+    #[cfg(target_os = "windows")]
+    let quaver_installation_default = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Quaver";
+    #[cfg(target_os = "linux")]
+    let quaver_installation_default = "~/.steam/steamapps/common";
+    #[cfg(target_os = "macos")]
+    let quaver_installation_default = "~/Library/Application Support/Steam/steamapps/common";
 
-    let quaver_installation = Path::new(&args.quaver_installation);
-    let now_playing_path = quaver_installation.join("Data").join("Temp").join("Now Playing");
+    let mut args = env::args().skip(1);
+    let quaver_installation = args.next().unwrap_or(String::from(quaver_installation_default));
+    let quaver_installation_path = Path::new(&quaver_installation);
+    
+    if !quaver_installation_path.exists() {
+        eprintln!("Quaver installation could not be found, please give a correct path as argument of this program.");
+        std::process::exit(1);
+    }
+    
+    let now_playing_path = quaver_installation_path.join("Data").join("Temp").join("Now Playing");
     let mapid_path = now_playing_path.join("mapid.txt");
     let mods_path = now_playing_path.join("mods.txt");
-    let songs_path = quaver_installation.join("Songs");
+    let songs_path = quaver_installation_path.join("Songs");
 
     // Setup file watcher
     let (tx, rx) = std::sync::mpsc::channel();

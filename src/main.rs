@@ -1,31 +1,199 @@
-use std::{collections::HashMap, env, fs, io::stdout, path::PathBuf, time::Duration};
+use std::{collections::HashMap, env, fs, path::PathBuf, time::Duration};
 use serde::Deserialize;
 use minacalc_rs::{Calc, CalcMode, Note, SkillsetScores};
 use notify::{RecursiveMode};
 use notify_debouncer_mini::{new_debouncer_opt, Config};
 use walkdir::WalkDir;
-use crossterm::{
-    execute,
-    terminal::{Clear, ClearType},
-    cursor::MoveTo
-};
+use iced::{Element, Subscription, Theme, futures::{SinkExt, Stream}, widget::{
+    center_x, center_y, column, scrollable, text,
+}};
 
 // QUA MODEL
 #[allow(non_snake_case)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct HitObject {
     StartTime: Option<u32>,
     Lane: u32
 }
 
 #[allow(non_snake_case)]
-#[derive(Deserialize)]
+#[derive(Deserialize, Clone)]
 struct Map {
     Title: String,
     Artist: String,
     DifficultyName: String,
     HitObjects: Vec<HitObject>,
     Mode: String
+}
+
+struct Overlay {
+    calc: Calc,
+    text: String
+}
+
+#[derive(Clone)]
+enum Message {
+    ChangeText(String),
+    UpdateCalc(Map, u32, f32),
+}
+
+impl Overlay {
+    fn new() -> Self {
+        Self {
+            calc: Calc::new().expect("Etterna Calc should launch"),
+            text: String::from("Waiting for map update")
+        }
+    }
+
+    fn update(&mut self, message: Message) {
+        match message {
+            Message::ChangeText(text) => self.text = text,
+            Message::UpdateCalc(map, key, rate) => {
+                let (rate, score) = compute_etterna_difficulty(&self.calc, &map.HitObjects, key, rate);
+                self.text = print_score(&map, rate, &score)
+            }
+        }
+    }
+
+    fn view(&self) -> Element<'_, Message> {
+        column![
+            center_y(scrollable(center_x(text(&self.text))).spacing(10)).padding(10)
+        ]
+        .into()
+    }
+
+    fn subscription(&self) -> Subscription<Message> {
+        return Subscription::run(Overlay::worker);
+    }
+
+    fn worker() -> impl Stream<Item = Message>  {
+        return iced::stream::channel(100, async |mut output| {
+            // Get quaver path
+            let quaver_installation_path = get_quaver_installation_path();
+            
+            if !quaver_installation_path.exists() {
+                println!("Quaver installation could not be found, please give a correct path as argument of this program.");
+                std::process::exit(1);
+            }
+            
+            let now_playing_path = quaver_installation_path.join("Data").join("Temp").join("Now Playing");
+            let mapid_path = now_playing_path.join("mapid.txt");
+            let mods_path = now_playing_path.join("mods.txt");
+            let songs_path = quaver_installation_path.join("Songs");
+
+            // Setup file watcher
+            let (tx, rx) = std::sync::mpsc::channel();
+
+            let backend_config = notify::Config::default()
+                .with_poll_interval(Duration::from_millis(250));
+            
+            let debouncer_config = Config::default()
+                .with_timeout(Duration::from_millis(1000))
+                .with_notify_config(backend_config);
+
+            let mut debouncer = new_debouncer_opt::<_, notify::PollWatcher>(debouncer_config, tx).unwrap();
+            debouncer.watcher().watch(&mapid_path, RecursiveMode::NonRecursive).unwrap();
+            debouncer.watcher().watch(&mods_path, RecursiveMode::NonRecursive).unwrap();
+
+            // Track last state to know what changed
+            let mut current_mapid: Option<String> = None;
+            let mut current_rate: Option<f32> = None;
+            let mut current_parsed_map: Option<Map> = None;
+
+            // On file update
+            loop {
+                let recv_result = rx.try_recv();
+                match recv_result {
+                    Ok(debouncer_result) => {
+                        match debouncer_result {
+                            Ok(events) => {
+                                let mut should_redraw = false;
+                                let mut new_mapid = current_mapid.clone();
+                                let mut new_rate = current_rate.clone();
+
+                                // Check if mapid changed
+                                if events.iter().any(|event| event.path.eq(&mapid_path)) {
+                                    new_mapid = fs::read_to_string(&mapid_path)
+                                        .map_err(|e| {println!("mapid read error: {e}");})
+                                        .and_then(|id| Ok(id.trim().to_owned()))
+                                        .ok();
+
+                                    if new_mapid.is_some() && new_mapid != current_mapid {
+                                        should_redraw = true;
+                                    }
+                                }
+
+                                // Check if mods changed
+                                if events.iter().any(|event| event.path.eq(&mods_path)) {
+                                    new_rate = fs::read_to_string(&mods_path)
+                                        .map_err(|e| {println!("mods read error: {e}");})
+                                        .and_then(|mods| Ok(parse_rate_from_mods(&mods)))
+                                        .ok();
+
+                                    if new_rate.is_some() && new_rate != current_rate {
+                                        should_redraw = true;
+                                    }
+                                }
+
+                                // Only proceed if something actually changed
+                                if !should_redraw {
+                                    continue;
+                                }
+                                        
+                                // If mapid changed -> re-read and parse the .qua file
+                                if new_mapid != current_mapid {
+                                    let qua = find_qua_file(&songs_path, &new_mapid.as_ref().unwrap());
+
+                                    if qua.is_none() {
+                                        let _ = output.send(Message::ChangeText(String::from("Could not find currently playing map"))).await;
+                                        continue;
+                                    }
+
+                                    let parsed_map = fs::read_to_string(&qua.unwrap())
+                                        .map_err(|e| {println!("qua read error: {e}");})
+                                        .and_then(|yaml_text| serde_yaml::from_str::<Map>(&yaml_text)
+                                            .map_err(|e| {println!("Could not parse map: {e}");}))
+                                        .ok();
+
+                                    match parsed_map {
+                                        Some(m) => {
+                                            current_parsed_map = Some(m);
+                                            current_mapid = new_mapid;
+                                        }
+                                        None => continue,
+                                    }
+                                }
+                                // Update state
+                                current_rate = new_rate;
+
+                                // Get the current map (either just loaded or previously loaded)
+                                let map = match &current_parsed_map {
+                                    Some(m) => m,
+                                    None => continue,
+                                };
+
+                                // Find keys of map
+                                let n_key : u32 = map.Mode
+                                    .strip_prefix("Keys")
+                                    .and_then(|key| key.parse().ok())
+                                    .expect("missing 'Keys' prefix or could not parse number");
+
+                                if n_key.lt(&2) {
+                                    let _ = output.send(Message::ChangeText(String::from("Cannot do difficulty calculation on less than 2K"))).await;
+                                    continue;
+                                }
+
+                                let _ = output.send(Message::UpdateCalc(map.clone(), n_key, new_rate.unwrap_or(1.0))).await;
+                            },
+                            Err(e) => {println!("file watcher error: {:?}", e);},
+                        }
+                    }
+                    Err(_) => {tokio::time::sleep(Duration::from_millis(500)).await;}
+                } 
+                
+            }
+        });
+    }
 }
 
 // FUNCTIONS
@@ -74,17 +242,18 @@ fn parse_rate_from_mods(mods: &str) -> f32 {
         .unwrap_or(1.0);
 }
 
-fn print_score(map: &Map, rate: f32, score: &SkillsetScores) {
+fn print_score(map: &Map, rate: f32, score: &SkillsetScores) -> String {
     // Print info rate and score
-    println!("{} - {} - {} - {:.1}x →", map.Artist, map.Title, map.DifficultyName, rate);
-    println!("Overall:\t{:.2}", score.overall);
-    println!("Stream:\t\t{:.2}", score.stream);
-    println!("Jumpstream:\t{:.2}", score.jumpstream);
-    println!("Handstream:\t{:.2}", score.handstream);
-    println!("Stamina:\t{:.2}", score.stamina);
-    println!("Jackspeed:\t{:.2}", score.jackspeed);
-    println!("Chordjack:\t{:.2}", score.chordjack);
-    println!("Technical:\t{:.2}", score.technical);
+    format!("{} - {} - {} - {:.1}x →\n\
+    Overall:\t{:.2}\n\
+    Stream:\t\t{:.2}\n\
+    Jumpstream:\t{:.2}\n\
+    Handstream:\t{:.2}\n\
+    Stamina:\t{:.2}\n\
+    Jackspeed:\t{:.2}\n\
+    Chordjack:\t{:.2}\n\
+    Technical:\t{:.2}", map.Artist, map.Title, map.DifficultyName, rate,
+    score.overall, score.stream, score.jumpstream, score.handstream, score.stamina, score.jackspeed, score.chordjack, score.technical)
 }
 
 fn get_quaver_installation_path() -> PathBuf {
@@ -108,135 +277,11 @@ fn get_quaver_installation_path() -> PathBuf {
     return args.next().map(PathBuf::from).unwrap_or(quaver_installation_default);
 }
 
-fn clear_term() {
-    let _ = execute!(stdout(), Clear(ClearType::All));
-    let _ = execute!(stdout(), MoveTo(0, 0));
-}
-
 // DO
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Start Ettena calc
-    let calc = Calc::new().expect("Etterna Calc should launch");
-    
-    // Get quaver path
-    let quaver_installation_path = get_quaver_installation_path();
-    
-    if !quaver_installation_path.exists() {
-        eprintln!("Quaver installation could not be found, please give a correct path as argument of this program.");
-        std::process::exit(1);
-    }
-    
-    let now_playing_path = quaver_installation_path.join("Data").join("Temp").join("Now Playing");
-    let mapid_path = now_playing_path.join("mapid.txt");
-    let mods_path = now_playing_path.join("mods.txt");
-    let songs_path = quaver_installation_path.join("Songs");
-
-    // Setup file watcher
-    let (tx, rx) = std::sync::mpsc::channel();
-
-    let backend_config = notify::Config::default()
-        .with_poll_interval(Duration::from_millis(250));
-    
-    let debouncer_config = Config::default()
-        .with_timeout(Duration::from_millis(1000))
-        .with_notify_config(backend_config);
-
-    let mut debouncer = new_debouncer_opt::<_, notify::PollWatcher>(debouncer_config, tx)?;
-    debouncer.watcher().watch(&mapid_path, RecursiveMode::NonRecursive)?;
-    debouncer.watcher().watch(&mods_path, RecursiveMode::NonRecursive)?;
-
-    // Track last state to know what changed
-    let mut current_mapid: Option<String> = None;
-    let mut current_rate: Option<f32> = None;
-    let mut current_parsed_map: Option<Map> = None;
-
-    // On file update
-    for res in rx {
-        match res {
-            Ok(events) => {
-                let mut should_redraw = false;
-                let mut new_mapid = current_mapid.clone();
-                let mut new_rate = current_rate.clone();
-
-                // Check if mapid changed
-                if events.iter().any(|event| event.path.eq(&mapid_path)) {
-                    new_mapid = fs::read_to_string(&mapid_path)
-                        .map_err(|e| eprintln!("mapid read error: {e}"))
-                        .and_then(|id| Ok(id.trim().to_owned()))
-                        .ok();
-
-                    if new_mapid.is_some() && new_mapid != current_mapid {
-                        should_redraw = true;
-                    }
-                }
-
-                // Check if mods changed
-                if events.iter().any(|event| event.path.eq(&mods_path)) {
-                    new_rate = fs::read_to_string(&mods_path)
-                        .map_err(|e| eprintln!("mods read error: {e}"))
-                        .and_then(|mods| Ok(parse_rate_from_mods(&mods)))
-                        .ok();
-
-                    if new_rate.is_some() && new_rate != current_rate {
-                        should_redraw = true;
-                    }
-                }
-
-                // Only proceed if something actually changed
-                if !should_redraw {
-                    continue;
-                }
-                clear_term();
-                        
-                // If mapid changed -> re-read and parse the .qua file
-                if new_mapid != current_mapid {
-                    let qua = find_qua_file(&songs_path, &new_mapid.as_ref().unwrap());
-
-                    if qua.is_none() {
-                        eprintln!("Could not find currently playing map");
-                        continue;
-                    }
-
-                    let parsed_map = fs::read_to_string(&qua.unwrap())
-                        .map_err(|e| eprintln!("qua read error: {e}"))
-                        .and_then(|yaml_text| serde_yaml::from_str::<Map>(&yaml_text)
-                        .map_err(|e| eprintln!("Could not parse map: {e}")))
-                        .ok();
-
-                    match parsed_map {
-                        Some(m) => {
-                            current_parsed_map = Some(m);
-                            current_mapid = new_mapid;
-                        }
-                        None => continue,
-                    }
-                }
-                // Update state
-                current_rate = new_rate;
-
-                // Get the current map (either just loaded or previously loaded)
-                let map = match &current_parsed_map {
-                    Some(m) => m,
-                    None => continue,
-                };
-
-                // Find keys of map
-                let n_key : u32 = map.Mode
-                    .strip_prefix("Keys")
-                    .and_then(|key| key.parse().ok())
-                    .expect("missing 'Keys' prefix or could not parse number");
-
-                if n_key.lt(&2) {
-                    eprintln!("Cannot do difficulty calculation on less than 2K");
-                    continue;
-                }
-
-                let (rate, score) = compute_etterna_difficulty(&calc, &map.HitObjects, n_key, new_rate.unwrap_or(1.0));
-                print_score(&map, rate, &score);
-            },
-            Err(e) => {clear_term(); println!("file watcher error: {:?}", e)},
-        }
-    }
-
+    let _ = iced::application(Overlay::new, Overlay::update, Overlay::view)
+        .subscription(Overlay::subscription)
+        .theme(Theme::CatppuccinMocha)
+        .run();
     Ok(())
 }

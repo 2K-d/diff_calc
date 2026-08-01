@@ -10,4 +10,5 @@ minacalc-rs = "515.1"
 notify = "8.2"
 notify-debouncer-mini = "0.7.0"
 walkdir = "2.5.0"
-crossterm = "0.29.0"
+iced = { version = "0.14", features = ["tokio"] }
+tokio = "1.53.1"

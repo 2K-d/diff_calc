@@ -4,9 +4,9 @@ use minacalc_rs::{Calc, CalcMode, Note, SkillsetScores};
 use notify::{RecursiveMode};
 use notify_debouncer_mini::{new_debouncer_opt, Config};
 use walkdir::WalkDir;
-use iced::{Element, Subscription, Theme, futures::{SinkExt, Stream}, widget::{
-    center_x, center_y, column, scrollable, text,
-}};
+use iced::{Color, Element, Subscription, Theme, font::Style, futures::{SinkExt, Stream}, widget::{
+    center_x, center_y, column, row, scrollable, text,
+}, window::{Level, Position, Settings}};
 
 // QUA MODEL
 #[allow(non_snake_case)]
@@ -28,7 +28,11 @@ struct Map {
 
 struct Overlay {
     calc: Calc,
-    text: String
+    text: String,
+    show_text: bool,
+    map: Option<Map>,
+    rate: Option<f32>,
+    score: Option<SkillsetScores>
 }
 
 #[derive(Clone)]
@@ -41,25 +45,69 @@ impl Overlay {
     fn new() -> Self {
         Self {
             calc: Calc::new().expect("Etterna Calc should launch"),
-            text: String::from("Waiting for map update")
+            text: String::from("Waiting for map update"),
+            show_text: true,
+            map: None,
+            rate: None,
+            score: None
         }
     }
 
     fn update(&mut self, message: Message) {
         match message {
-            Message::ChangeText(text) => self.text = text,
+            Message::ChangeText(text) => {
+                self.text = text;
+                self.show_text = true;
+            },
             Message::UpdateCalc(map, key, rate) => {
                 let (rate, score) = compute_etterna_difficulty(&self.calc, &map.HitObjects, key, rate);
-                self.text = print_score(&map, rate, &score)
+                self.show_text = false;
+                self.map = Some(map);
+                self.rate = Some(rate);
+                self.score = Some(score);
             }
         }
     }
 
     fn view(&self) -> Element<'_, Message> {
+        if self.show_text {
+            return column![
+                center_y(scrollable(center_x(text(&self.text))).spacing(10)).padding(10)
+            ].into()
+        } else {
+            let map = self.map.clone().unwrap();
+            let score = self.score.unwrap();
+            let rate = self.rate.unwrap();
+            return center_y(scrollable(center_x(
         column![
-            center_y(scrollable(center_x(text(&self.text))).spacing(10)).padding(10)
-        ]
-        .into()
+                    column![
+                        center_x(text(format!("{} - {}", map.Artist, map.Title)).size(20)),
+                        center_x(row![text(map.DifficultyName).size(18), text(format!("{:.2}", rate)).size(18).color(color_rate(rate))].spacing(10))
+                    ].padding(10),
+                    center_x(row![
+                        column![
+                            text("Overall"),
+                            text("Stream"),
+                            text("Jumpstream"),
+                            text("Handstream"),
+                            text("Stamina"),
+                            text("Jackspeed"),
+                            text("Chordjack"),
+                            text("Technical")
+                        ].spacing(10),
+                        column![
+                            text(format!("{:.2}", score.overall)).color(color_diff(score.overall)),
+                            text(format!("{:.2}", score.stream)).color(color_diff(score.stream)),
+                            text(format!("{:.2}", score.jumpstream)).color(color_diff(score.jumpstream)),
+                            text(format!("{:.2}", score.handstream)).color(color_diff(score.handstream)),
+                            text(format!("{:.2}", score.stamina)).color(color_diff(score.stamina)),
+                            text(format!("{:.2}", score.jackspeed)).color(color_diff(score.jackspeed)),
+                            text(format!("{:.2}", score.chordjack)).color(color_diff(score.chordjack)),
+                            text(format!("{:.2}", score.technical)).color(color_diff(score.technical))
+                        ].spacing(10)
+                    ].spacing(50))
+                ]))).into()
+        }
     }
 
     fn subscription(&self) -> Subscription<Message> {
@@ -196,7 +244,43 @@ impl Overlay {
     }
 }
 
+
+
 // FUNCTIONS
+fn color_diff(v: f32) -> Color {
+    let x = v.clamp(0.0, 40.0) / 40.0; // normalize to [0, 1]
+    if x <= 0.5 { // 0.0..0.5 : blue -> green
+        let t = x / 0.5; // 0..1
+        let r = 0.0;
+        let g = t;
+        let b = 1.0 - t;
+        Color::from_rgb(r, g, b)
+    } else { // 0.5..1.0 : green -> red
+        let t = (x - 0.5) / 0.5; // 0..1
+        let r = t;
+        let g = 1.0 - t;
+        let b = 0.0;
+        Color::from_rgb(r, g, b)
+    }
+}
+
+fn color_rate(v: f32) -> Color {
+    let x = (v.clamp(0.5, 2.0) - 0.5) / 1.5; // normalize to [0, 1]
+    if x <= 0.5 { // 0.0..0.5 : blue -> green
+        let t = x / 0.5; // 0..1
+        let r = 0.0;
+        let g = t;
+        let b = 1.0 - t;
+        Color::from_rgb(r, g, b)
+    } else { // 0.5..1.0 : green -> red
+        let t = (x - 0.5) / 0.5; // 0..1
+        let r = t;
+        let g = 1.0 - t;
+        let b = 0.0;
+        Color::from_rgb(r, g, b)
+    }
+}
+
 fn compute_etterna_difficulty(calc: &Calc, hit_objects: &Vec<HitObject>, n_key: u32, rate: f32) -> (f32, SkillsetScores) {
     // Transform quaver to etterna format
     let mut sums: HashMap<u32, u32> = HashMap::new();
@@ -242,20 +326,6 @@ fn parse_rate_from_mods(mods: &str) -> f32 {
         .unwrap_or(1.0);
 }
 
-fn print_score(map: &Map, rate: f32, score: &SkillsetScores) -> String {
-    // Print info rate and score
-    format!("{} - {} - {} - {:.1}x →\n\
-    Overall:\t{:.2}\n\
-    Stream:\t\t{:.2}\n\
-    Jumpstream:\t{:.2}\n\
-    Handstream:\t{:.2}\n\
-    Stamina:\t{:.2}\n\
-    Jackspeed:\t{:.2}\n\
-    Chordjack:\t{:.2}\n\
-    Technical:\t{:.2}", map.Artist, map.Title, map.DifficultyName, rate,
-    score.overall, score.stream, score.jumpstream, score.handstream, score.stamina, score.jackspeed, score.chordjack, score.technical)
-}
-
 fn get_quaver_installation_path() -> PathBuf {
     // Get quaver installation path
     #[cfg(target_os = "windows")]
@@ -279,7 +349,17 @@ fn get_quaver_installation_path() -> PathBuf {
 
 // DO
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let window_settings = Settings {
+        size: (400, 450).into(),
+        position: Position::Specific((2100.0,100.0).into()),
+        resizable: true,
+        decorations: false,
+        level: Level::AlwaysOnTop,
+        ..Settings::default()
+    };
+
     let _ = iced::application(Overlay::new, Overlay::update, Overlay::view)
+        .window(window_settings)
         .subscription(Overlay::subscription)
         .theme(Theme::CatppuccinMocha)
         .run();

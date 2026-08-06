@@ -10,5 +10,6 @@ minacalc-rs = "515.1"
 notify = "8.2"
 notify-debouncer-mini = "0.7.0"
 walkdir = "2.5.0"
-iced = { version = "0.14", features = ["tokio"] }
+iced = { version = "0.14", features = ["tokio", "image"] }
+image = "0.25.9"
 tokio = "1.53.1"

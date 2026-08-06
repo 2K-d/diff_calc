@@ -8,8 +8,9 @@ use std::{
 };
 
 use iced::{
-    Color, Element, Event, Point, Size, Subscription, Task, Theme, event, futures::{SinkExt, Stream, channel::mpsc::Sender}, mouse::{self, Button}, widget::{center_x, center_y, column, row, scrollable, text}, window::{self, Id, Level, Position, Settings},
+    Color, Element, Event, Point, Size, Subscription, Task, Theme, event, futures::{SinkExt, Stream, channel::mpsc::Sender}, mouse::{self, Button}, widget::{center_x, center_y, column, row, scrollable, text}, window::{self, Id, Level, Position, Settings, icon},
 };
+use image::ImageFormat;
 use minacalc_rs::{Calc, CalcMode, Note, SkillsetScores};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{Config, DebouncedEvent, new_debouncer_opt};
@@ -62,7 +63,7 @@ enum Message {
     MousePressed(mouse::Button),
     MouseMoved(Point),
     MouseReleased(mouse::Button),
-    WindowOpened(Id)
+    WindowOpened(Id, Point)
 }
 
 /// Main application overlay state.
@@ -141,8 +142,9 @@ impl Overlay {
                 self.is_dragging = false;
                 Task::none()
             },
-            Message::WindowOpened(id)  => {
+            Message::WindowOpened(id, position)  => {
                 self.window_id = id;
+                self.window_position = position;
                 Task::none()
             }
             _  => {Task::none()}
@@ -220,8 +222,8 @@ impl Overlay {
                 Event::Mouse(iced::mouse::Event::ButtonReleased(Button::Left)) => {
                     Some(Message::MouseReleased(Button::Left))
                 }
-                Event::Window(iced::window::Event::Opened { position: _, size: _ }) => {
-                    Some(Message::WindowOpened(id))
+                Event::Window(iced::window::Event::Opened { position, size: _ }) => {
+                    Some(Message::WindowOpened(id, position.expect("position should be defined at window openning")))
                 }
                 _ => None,
             }
@@ -556,7 +558,9 @@ fn bottom_left_position(window_size: Size<f32>, monitor_size: Size<f32>) -> Poin
 
 /// Runs the Etterna difficulty overlay application.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let icon = icon::from_file_data(include_bytes!("../icon.png"), Some(ImageFormat::Png))?;
     let window_settings = Settings {
+        icon: Some(icon),
         size: Size::new(400.0, 450.0),
         position: Position::SpecificWith(bottom_left_position),
         resizable: false,

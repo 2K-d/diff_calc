@@ -4,7 +4,7 @@ use minacalc_rs::{Calc, CalcMode, Note, SkillsetScores};
 use notify::{RecursiveMode};
 use notify_debouncer_mini::{new_debouncer_opt, Config};
 use walkdir::WalkDir;
-use iced::{Color, Element, Subscription, Theme, font::Style, futures::{SinkExt, Stream}, widget::{
+use iced::{Color, Element, Point, Size, Subscription, Theme, font::Style, futures::{SinkExt, Stream}, widget::{
     center_x, center_y, column, row, scrollable, text,
 }, window::{Level, Position, Settings}};
 
@@ -347,11 +347,15 @@ fn get_quaver_installation_path() -> PathBuf {
     return args.next().map(PathBuf::from).unwrap_or(quaver_installation_default);
 }
 
+fn bottom_left(window_size: Size<f32>, monitor_size: Size<f32>) -> Point<f32> {
+    return (0.0, monitor_size.height - window_size.height).into();
+}
+
 // DO
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window_settings = Settings {
         size: (400, 450).into(),
-        position: Position::Specific((2100.0,100.0).into()),
+        position: Position::SpecificWith(bottom_left),
         resizable: true,
         decorations: false,
         level: Level::AlwaysOnTop,

@@ -8,7 +8,7 @@ use std::{
 };
 
 use iced::{
-    Color, Element, Point, Size, Subscription, Theme, futures::{SinkExt, Stream, channel::mpsc::Sender}, widget::{center_x, center_y, column, row, scrollable, text}, window::{Level, Position, Settings},
+    Color, Element, Event, Point, Size, Subscription, Task, Theme, event, futures::{SinkExt, Stream, channel::mpsc::Sender}, mouse::{self, Button}, widget::{center_x, center_y, column, row, scrollable, text}, window::{self, Id, Level, Position, Settings},
 };
 use minacalc_rs::{Calc, CalcMode, Note, SkillsetScores};
 use notify::RecursiveMode;
@@ -59,6 +59,10 @@ enum Message {
         key_count: u32,
         rate: f32
     },
+    MousePressed(mouse::Button),
+    MouseMoved(Point),
+    MouseReleased(mouse::Button),
+    WindowOpened(Id)
 }
 
 /// Main application overlay state.
@@ -68,7 +72,11 @@ struct Overlay {
     show_status: bool,
     current_map: Option<Map>,
     current_rate: Option<f32>,
-    current_score: Option<SkillsetScores>
+    current_score: Option<SkillsetScores>,
+    is_dragging: bool,
+    window_id: Id,
+    previous_mouse_position: Point,
+    window_position: Point
 }
 
 // ============================================================================
@@ -84,16 +92,21 @@ impl Overlay {
             show_status: true,
             current_map: None,
             current_rate: None,
-            current_score: None
+            current_score: None,
+            is_dragging: false,
+            window_id: Id::unique(),
+            previous_mouse_position: Point::ORIGIN,
+            window_position: Point::ORIGIN
         }
     }
 
     /// Processes incoming messages and updates internal state.
-    fn update(&mut self, message: Message) {
+    fn update(&mut self, message: Message) -> Task<Message> {
         match message {
             Message::ChangeText(text) => {
                 self.status_text = text;
                 self.show_status = true;
+                Task::none()
             },
             Message::UpdateCalc {
                 map,
@@ -105,7 +118,34 @@ impl Overlay {
                 self.current_map = Some(map);
                 self.current_rate = Some(normalized_rate);
                 self.current_score = Some(score);
+                Task::none()
+            },
+            Message::MousePressed(mouse::Button::Left) => {
+                self.is_dragging = true;
+                Task::none()
             }
+            Message::MouseMoved(mouse_position) => {
+                if self.is_dragging {
+                    let drag_offset = (mouse_position - self.previous_mouse_position)/2.0;
+                    self.window_position = self.window_position + drag_offset;
+                    return window::move_to(
+                        self.window_id, 
+                        self.window_position
+                    );
+                }
+                self.previous_mouse_position = mouse_position;
+                Task::none()
+                
+            }
+            Message::MouseReleased(mouse::Button::Left) => {
+                self.is_dragging = false;
+                Task::none()
+            },
+            Message::WindowOpened(id)  => {
+                self.window_id = id;
+                Task::none()
+            }
+            _  => {Task::none()}
         }
     }
 
@@ -149,14 +189,43 @@ impl Overlay {
         }
     }
 
-    /// Creates the file watcher subscription.
+    /// Creates a subscription that combine every other subscription.
     fn subscription(&self) -> Subscription<Message> {
+        Subscription::batch(vec![
+            self.subscription_file_watcher(),
+            self.subscription_event()
+        ])
+    }
+
+    /// Creates the file watcher subscription.
+    fn subscription_file_watcher(&self) -> Subscription<Message> {
         Subscription::run(Overlay::file_watcher)
     }
 
     /// Worker task that monitors file changes and emits messages.
     fn file_watcher() -> impl Stream<Item = Message>  {
         iced::stream::channel(100, file_watcher_task)
+    }
+
+    /// Creates an app event subscription.
+    fn subscription_event(&self) -> Subscription<Message> {
+        event::listen_with(|event, _status, id| {
+            match event {
+                Event::Mouse(iced::mouse::Event::CursorMoved { position}) => {
+                    Some(Message::MouseMoved(position))
+                },
+                Event::Mouse(iced::mouse::Event::ButtonPressed(Button::Left)) => {
+                    Some(Message::MousePressed(Button::Left))
+                }
+                Event::Mouse(iced::mouse::Event::ButtonReleased(Button::Left)) => {
+                    Some(Message::MouseReleased(Button::Left))
+                }
+                Event::Window(iced::window::Event::Opened { position: _, size: _ }) => {
+                    Some(Message::WindowOpened(id))
+                }
+                _ => None,
+            }
+        })
     }
 }
 
@@ -192,7 +261,7 @@ async fn file_watcher_task(mut output: Sender<Message>) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("Failed to initialize file watcher: {e}");
-                return;
+                std::process::exit(2);
             }
         };
     debouncer.watcher().watch(&mapid_path, RecursiveMode::NonRecursive).unwrap();
@@ -490,7 +559,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window_settings = Settings {
         size: Size::new(400.0, 450.0),
         position: Position::SpecificWith(bottom_left_position),
-        resizable: true,
+        resizable: false,
         decorations: false,
         level: Level::AlwaysOnTop,
         ..Settings::default()

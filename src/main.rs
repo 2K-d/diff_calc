@@ -558,7 +558,7 @@ fn bottom_left_position(window_size: Size<f32>, monitor_size: Size<f32>) -> Poin
 
 /// Runs the Etterna difficulty overlay application.
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let icon = icon::from_file_data(include_bytes!("../icon.png"), Some(ImageFormat::Png))?;
+    let icon = icon::from_file_data(include_bytes!("icon.png"), Some(ImageFormat::Png))?;
     let window_settings = Settings {
         icon: Some(icon),
         size: Size::new(400.0, 450.0),

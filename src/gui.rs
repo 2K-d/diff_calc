@@ -88,7 +88,7 @@ impl Overlay {
             Message::MouseMoved(mouse_position) => {
                 if self.is_dragging {
                     let drag_offset = (mouse_position - self.previous_mouse_position)/2.0;
-                    self.window_position = self.window_position + drag_offset;
+                    self.window_position += drag_offset;
                     return window::move_to(
                         self.window_id, 
                         self.window_position
@@ -254,10 +254,10 @@ pub fn launch_gui() -> std::result::Result<(), iced::Error> {
         ..Settings::default()
     };
 
-    return iced::application(Overlay::new, Overlay::update, Overlay::view)
+    iced::application(Overlay::new, Overlay::update, Overlay::view)
         .window(window_settings)
         .title("diff-calc")
         .subscription(Overlay::subscription)
         .theme(Theme::CatppuccinMocha)
-        .run();
+        .run()
 }

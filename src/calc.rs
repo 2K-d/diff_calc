@@ -1,12 +1,13 @@
 //! This file has the code responsible for difficulty calculation
 
 use std::{
-    collections::HashMap, env, fs, path::{Path, PathBuf}, time::Duration,
+    collections::HashMap, fs, path::{Path, PathBuf}, time::Duration,
 };
 use iced::futures::{SinkExt, channel::mpsc::Sender};
 use minacalc_rs::{Calc, CalcMode, Note, SkillsetScores};
 use notify::RecursiveMode;
 use notify_debouncer_mini::{Config, DebouncedEvent, new_debouncer_opt};
+use rfd::{FileDialog, MessageDialog};
 use serde::Deserialize;
 use walkdir::WalkDir;
 
@@ -53,11 +54,17 @@ struct FileChanges {
 /// Main async task for file monitoring and map updates.
 pub async fn file_watcher_task(mut output: Sender<Message>) {
     // Get quaver path
-    let quaver_path = get_quaver_installation_path();
+    let mut quaver_path = get_quaver_default_installation_path();
     
     if !quaver_path.exists() {
-        eprintln!("Quaver installation could not be found, please give a correct path as argument of this program.");
-        std::process::exit(1);
+        MessageDialog::new()
+            .set_title("Quaver installation not found")
+            .set_description("Quaver installation could not be found.\nPlease select the root directory of your Quaver installation.")
+            .show();
+        quaver_path = FileDialog::new()
+            .set_title("Select Quaver Installation Folder")
+            .pick_folder()
+            .unwrap();
     }
     
     let now_playing_path = quaver_path.join("Data").join("Temp").join("Now Playing");
@@ -77,7 +84,11 @@ pub async fn file_watcher_task(mut output: Sender<Message>) {
         match new_debouncer_opt::<_, notify::PollWatcher>(debouncer_config, tx) {
             Ok(d) => d,
             Err(e) => {
-                eprintln!("Failed to initialize file watcher: {e}");
+                MessageDialog::new()
+                    .set_title("File Watcher Problem")
+                    .set_description(format!("Could not create a file watcher to observe files change: {e}"))
+                    .set_level(rfd::MessageLevel::Error)
+                    .show();
                 std::process::exit(2);
             }
         };
@@ -234,8 +245,8 @@ fn parse_rate_from_mods(mods: &str) -> Result<f32, String> {
         .map_err(|_| "Could not parse rate as f32".to_string())
 }
 
-/// Gets the Quaver installation path from command-line args or system defaults.
-fn get_quaver_installation_path() -> PathBuf {
+/// Gets the Quaver installation path from system defaults.
+fn get_quaver_default_installation_path() -> PathBuf {
     // Get quaver installation path
     #[cfg(target_os = "windows")]
     let quaver_installation_default = PathBuf::from("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Quaver");
@@ -252,8 +263,7 @@ fn get_quaver_installation_path() -> PathBuf {
             .unwrap_or(PathBuf::from("."))
         .join("Library").join("Application Support").join("Steam").join("steamapps").join("common").join("Quaver");
 
-    let mut args = env::args().skip(1);
-    args.next().map(PathBuf::from).unwrap_or(quaver_installation_default)
+    quaver_installation_default
 }
 
 // ============================================================================

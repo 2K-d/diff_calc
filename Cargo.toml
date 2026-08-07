@@ -13,3 +13,4 @@ walkdir = "2.5.0"
 iced = { version = "0.14", features = ["tokio", "image"] }
 image = "0.25.9"
 tokio = "1.53.1"
+rfd = "0.17.2"

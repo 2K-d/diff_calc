@@ -18,4 +18,4 @@ Diff-Calc when launched will try to find a Quaver installation starting with "Qu
 ### Linux
 Use what your compositor/window manager gives you (eg. Super + Mouse Left Click on sway).
 ## Example
-https://github.com/user-attachments/assets/bc4a4dc6-5af2-4175-9df1-4d9998caba75
+https://github.com/user-attachments/assets/c96f2cbc-bf94-4a2b-9039-9d7353de89e1

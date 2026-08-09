@@ -2,7 +2,7 @@
 
 use crate::calc::{Map, compute_etterna_difficulty, file_watcher_task};
 use iced::{
-    Color, Element, Event, Point, Size, Subscription, Task, Theme, event, futures::Stream, mouse::{self, Button}, widget::{center_x, center_y, column, row, scrollable, text}, window::{self, Id, Level, Position, Settings, icon},
+    Color, Element, Point, Size, Subscription, Task, Theme, futures::Stream, widget::{center_x, center_y, column, row, scrollable, text}, window::{Level, Position, Settings, icon},
 };
 use image::ImageFormat;
 use minacalc_rs::{Calc, SkillsetScores};
@@ -19,11 +19,7 @@ pub enum Message {
         map: Map, 
         key_count: u32,
         rate: f32
-    },
-    MousePressed(mouse::Button),
-    MouseMoved(Point),
-    MouseReleased(mouse::Button),
-    WindowOpened(Id, Point)
+    }
 }
 
 /// Main application overlay state.
@@ -34,10 +30,6 @@ struct Overlay {
     current_map: Option<Map>,
     current_rate: Option<f32>,
     current_score: Option<SkillsetScores>,
-    is_dragging: bool,
-    window_id: Id,
-    previous_mouse_position: Point,
-    window_position: Point
 }
 
 // ============================================================================
@@ -53,11 +45,7 @@ impl Overlay {
             show_status: true,
             current_map: None,
             current_rate: None,
-            current_score: None,
-            is_dragging: false,
-            window_id: Id::unique(),
-            previous_mouse_position: Point::ORIGIN,
-            window_position: Point::ORIGIN
+            current_score: None
         }
     }
 
@@ -80,34 +68,7 @@ impl Overlay {
                 self.current_rate = Some(normalized_rate);
                 self.current_score = Some(score);
                 Task::none()
-            },
-            Message::MousePressed(mouse::Button::Left) => {
-                self.is_dragging = true;
-                Task::none()
             }
-            Message::MouseMoved(mouse_position) => {
-                if self.is_dragging {
-                    let drag_offset = (mouse_position - self.previous_mouse_position)/2.0;
-                    self.window_position += drag_offset;
-                    return window::move_to(
-                        self.window_id, 
-                        self.window_position
-                    );
-                }
-                self.previous_mouse_position = mouse_position;
-                Task::none()
-                
-            }
-            Message::MouseReleased(mouse::Button::Left) => {
-                self.is_dragging = false;
-                Task::none()
-            },
-            Message::WindowOpened(id, position)  => {
-                self.window_id = id;
-                self.window_position = position;
-                Task::none()
-            }
-            _  => {Task::none()}
         }
     }
 
@@ -153,10 +114,7 @@ impl Overlay {
 
     /// Creates a subscription that combine every other subscription.
     fn subscription(&self) -> Subscription<Message> {
-        Subscription::batch(vec![
-            self.subscription_file_watcher(),
-            self.subscription_event()
-        ])
+        self.subscription_file_watcher()
     }
 
     /// Creates the file watcher subscription.
@@ -167,27 +125,6 @@ impl Overlay {
     /// Worker task that monitors file changes and emits messages.
     fn file_watcher() -> impl Stream<Item = Message>  {
         iced::stream::channel(100, file_watcher_task)
-    }
-
-    /// Creates an app event subscription.
-    fn subscription_event(&self) -> Subscription<Message> {
-        event::listen_with(|event, _status, id| {
-            match event {
-                Event::Mouse(iced::mouse::Event::CursorMoved { position}) => {
-                    Some(Message::MouseMoved(position))
-                },
-                Event::Mouse(iced::mouse::Event::ButtonPressed(Button::Left)) => {
-                    Some(Message::MousePressed(Button::Left))
-                }
-                Event::Mouse(iced::mouse::Event::ButtonReleased(Button::Left)) => {
-                    Some(Message::MouseReleased(Button::Left))
-                }
-                Event::Window(iced::window::Event::Opened { position, size: _ }) => {
-                    Some(Message::WindowOpened(id, position.unwrap_or_default()))
-                }
-                _ => None,
-            }
-        })
     }
 }
 

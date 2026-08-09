@@ -9,5 +9,13 @@ Diff-Calc when launched will try to find a Quaver installation starting with "Qu
 ## Dependencies needed
 ### Linux
 - [XDG Desktop Portal backend](https://docs.rs/rfd/latest/rfd/#xdg-desktop-portal-backend)
+## Move Diff-Calc window
+### Windows
+- Alt+Space while it is the primary window
+- Click on move
+- Use arrow
+- Validate with Enter
+### Linux
+Use what your compositor/window manager gives you (eg. Super + Mouse Left Click on sway).
 ## Example
 https://github.com/user-attachments/assets/bc4a4dc6-5af2-4175-9df1-4d9998caba75

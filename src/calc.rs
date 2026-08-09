@@ -64,7 +64,7 @@ pub async fn file_watcher_task(mut output: Sender<Message>) {
         quaver_path = FileDialog::new()
             .set_title("Select Quaver Installation Folder")
             .pick_folder()
-            .unwrap();
+            .unwrap_or_else(|| std::process::exit(1));
     }
     
     let now_playing_path = quaver_path.join("Data").join("Temp").join("Now Playing");

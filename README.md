@@ -1,17 +1,13 @@
 # Diff-Calc
-Compute Etterna difficulty on Quaver map
+Diff-Calc compute Etterna difficulty of currently selected Quaver map and mods.
 ## Usage
-Diff-Calc should be used through a terminal after the launch of Quaver on selection screen, with the following command:
-```shell
-diff_calc <QUAVER>
-```
-### Arguments:
-  \<QUAVER\>  path to the root directory of an actual quaver installation
-#### QUAVER default
+Diff-Calc when launched will try to find a Quaver installation starting with "Quaver default path" if no installation is found a file selector will be opened to select Quaver root folder.
+### Quaver default path
 - Windows: "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Quaver"
 - Linux: "~/.local/share/Steam/steamapps/common/Quaver"
 - Mac: "~/Library/share/Steam/steamapps/common/Quaver"
+## Dependencies needed
+### Linux
+- [XDG Desktop Portal backend](https://docs.rs/rfd/latest/rfd/#xdg-desktop-portal-backend)
 ## Example
 https://github.com/user-attachments/assets/bc4a4dc6-5af2-4175-9df1-4d9998caba75
-## Known Issue
-Rate used for difficulty calculation is only updated at start of a map in current Quaver version (v1.8.0.1).

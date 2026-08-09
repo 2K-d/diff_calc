@@ -183,7 +183,7 @@ impl Overlay {
                     Some(Message::MouseReleased(Button::Left))
                 }
                 Event::Window(iced::window::Event::Opened { position, size: _ }) => {
-                    Some(Message::WindowOpened(id, position.expect("position should be defined at window openning")))
+                    Some(Message::WindowOpened(id, position.unwrap_or_default()))
                 }
                 _ => None,
             }

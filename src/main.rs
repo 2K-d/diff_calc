@@ -3,6 +3,8 @@
 //! This application monitors the Quaver "Now Playing" directory for map changes
 //! and displays real-time difficulty calculations using the Etterna Calc.
 
+#![windows_subsystem = "windows"]
+
 mod calc;
 mod gui;
 use crate::gui::launch_gui;
